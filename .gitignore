@@ -361,3 +361,35 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# External Libs
+external/*
+!external/.gitkeep
+
+# Build directories
+build/
+out/
+
+# IDE specific files
+.vs/
+.vscode/
+*.user
+*.suo
+*.userprefs
+*.sdf
+*.opensdf
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+*.cmake
+!.env.cmake
+
+# Compiled binaries
+*.exe
+*.dll
+*.so
+*.dylib
+*.idb
+# Vulkan shader compiled files
+*.spv
