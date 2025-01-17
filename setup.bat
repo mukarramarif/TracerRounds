@@ -23,5 +23,8 @@ cd ..
 echo Cloning STB...
 git clone https://github.com/nothings/stb.git stb-master
 
+echo Cloning ImGui...
+git clone https://github.com/ocornut/imgui.git imgui
+
 cd ..
 echo Setup complete! 
