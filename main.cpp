@@ -127,35 +127,29 @@ struct Vertex {
     }
 };
 struct Bullet {
-    glm::vec3 startPosition;
-    glm::vec3 direction;
-    float speed;
-    float lifetime;
+    alignas(16) glm::mat4 matrix;
 };
-class Weapon {
-public:
-    void shoot(const glm::vec3& startPosition, const glm::vec3& direction, float speed) {
-        bullets.push_back({ startPosition, direction, speed, 5.0f }); // 5 seconds lifetime
-    }
 
-    void update(float deltaTime) {
-        for (auto it = bullets.begin(); it != bullets.end();) {
-            it->startPosition += it->direction * it->speed * deltaTime;
-            it->lifetime -= deltaTime;
-            if (it->lifetime <= 0.0f) {
-                it = bullets.erase(it);
-            }
-            else {
-                ++it;
-            }
-        }
-    }
-
-    const std::vector<Bullet>& getBullets() const { return bullets; }
-
-private:
+struct {
+    VkBuffer buffer;
+    VkDeviceMemory memory;
+    void* mappedData;
     std::vector<Bullet> bullets;
+} bulletSSBO;
+
+// class Weapon {
+// public:
+//     void shoot(const glm::vec3& startPosition, const glm::vec3& direction, float speed) {
+//         bullets.push_back({ startPosition, direction, speed, 5.0f }); // 5 seconds lifetime
+//     }
+
+// Per-model data in SSBO
+struct ModelData {
+    alignas(16) glm::mat4 model;
 };
+
+
+
 namespace std {
     template<> struct hash<Vertex> {
         size_t operator()(Vertex const& vertex) const {
@@ -163,15 +157,14 @@ namespace std {
         }
     };
 }
-
 struct UniformBufferObject {
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
-    alignas(16) glm::mat4 bulletModel;
-	alignas(16) int isBullet;
 };
-
+struct PushConstants {
+    int bulletIndex;
+};
 class HelloTriangleApplication {
 public:
     void run() {
@@ -252,17 +245,75 @@ private:
     VkDeviceMemory bulletVertexBufferMemory;
     VkBuffer bulletIndexBuffer;
     VkDeviceMemory bulletIndexBufferMemory;
-	Weapon weapon;
-
+    const int MAX_BULLETS = 1000;
   
-	
+	 // Create the SSBO
+    void createBulletSSBO() {
+        VkDeviceSize bufferSize = sizeof(Bullet) * MAX_BULLETS;
+        
+        createBuffer(bufferSize,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
+            bulletSSBO.buffer, bulletSSBO.memory);
+
+        vkMapMemory(device, bulletSSBO.memory, 0, bufferSize, 0, &bulletSSBO.mappedData);
+    }
+
+    // Update bullet data
+    void updateBullets() {
+        static auto lastTime = std::chrono::high_resolution_clock::now();
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>
+            (currentTime - lastTime).count();
+        lastTime = currentTime;
+
+        for (size_t i = 0; i < bulletSSBO.bullets.size(); i++) {
+            // Extract current position from matrix
+            glm::vec3 currentPos = glm::vec3(
+                bulletSSBO.bullets[i].matrix[3][0],
+                bulletSSBO.bullets[i].matrix[3][1],
+                bulletSSBO.bullets[i].matrix[3][2]
+            );
+
+            // Calculate new position
+            glm::vec3 movement = glm::vec3(0.0f, 0.0f, -1.0f) * 10.0f * deltaTime;
+            glm::vec3 newPos = currentPos + movement;
+
+            // Update matrix with new position
+            bulletSSBO.bullets[i].matrix[3][0] = newPos.x;
+            bulletSSBO.bullets[i].matrix[3][1] = newPos.y;
+            bulletSSBO.bullets[i].matrix[3][2] = newPos.z;
+
+            // Debug print
+            std::cout << "Bullet " << i << " position: ("
+                      << newPos.x << ", "
+                      << newPos.y << ", "
+                      << newPos.z << ")" << std::endl;
+        }
+
+        // Update GPU memory
+        if (!bulletSSBO.bullets.empty()) {
+            VkDeviceSize bufferSize = sizeof(Bullet) * bulletSSBO.bullets.size();
+            memcpy(bulletSSBO.mappedData, bulletSSBO.bullets.data(), bufferSize);
+        }
+    }
+
+    // Add bullet
+    void addBullet(glm::vec3 position, glm::vec3 direction) {
+        Bullet bullet{};
+        bullet.matrix = glm::translate(glm::mat4(1.0f), position);
+        bulletSSBO.bullets.push_back(bullet);
+        std::cout << "Added bullet. Total bullets: " << bulletSSBO.bullets.size() << std::endl;
+    }
 	
     void loadBulletModel() {
+        // Comment out original bullet model loading
+        /*
         tinyobj::attrib_t attrib;
         std::vector<tinyobj::shape_t> shapes;
         std::vector<tinyobj::material_t> materials;
         std::string warn, err;
-        std::cout << "Bullet model path: " << BULLET_MODEL_PATH << std::endl;
+
         if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, BULLET_MODEL_PATH.c_str())) {
             throw std::runtime_error(warn + err);
         }
@@ -283,7 +334,7 @@ private:
                     1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
                 };
 
-                vertex.color = { 0.6f, 0.9f, 0.6f };
+                vertex.color = { 1.0f, 0.0f, 1.0f };
 
                 if (uniqueVertices.count(vertex) == 0) {
                     uniqueVertices[vertex] = static_cast<uint32_t>(bulletVertices.size());
@@ -293,18 +344,56 @@ private:
                 bulletIndices.push_back(uniqueVertices[vertex]);
             }
         }
+        */
+        // Create a simple cube for bullets
+        bulletVertices = {
+            // Front face
+            {{-0.1f, -0.1f, -0.1f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},  // Red color
+            {{0.1f, -0.1f, -0.1f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+            {{0.1f, 0.1f, -0.1f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
+            {{-0.1f, 0.1f, -0.1f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+
+            // Back face
+            {{-0.1f, -0.1f, 0.1f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+            {{0.1f, -0.1f, 0.1f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+            {{0.1f, 0.1f, 0.1f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
+            {{-0.1f, 0.1f, 0.1f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}}
+        };
+
+        bulletIndices = {
+            // Front face
+            0, 1, 2, 2, 3, 0,
+            // Back face
+            4, 5, 6, 6, 7, 4,
+            // Left face
+            4, 0, 3, 3, 7, 4,
+            // Right face
+            1, 5, 6, 6, 2, 1,
+            // Top face
+            3, 2, 6, 6, 7, 3,
+            // Bottom face
+            0, 1, 5, 5, 4, 0
+        };
+
+        
     }
     void createBulletBuffers() {
         createVertexBuffer(bulletVertices, bulletVertexBuffer, bulletVertexBufferMemory);
         createIndexBuffer(bulletIndices, bulletIndexBuffer, bulletIndexBufferMemory);
     }
     void processInput(GLFWwindow* window) {
-        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-            // Fire a bullet
-            glm::vec3 weaponPosition = glm::vec3(0.0f, 0.0f, -1.0f); // Replace with actual position
-            glm::vec3 bulletDirection = glm::normalize(glm::vec3(0.0f, 0.0f, -1.0f)); // Replace with actual direction
-            weapon.shoot(weaponPosition, bulletDirection, 10.0f); // Speed is 10.0f
+        static bool spaceWasPressed = false;
+        bool spaceIsPressed = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
+        
+        // Only fire when space is first pressed (not held)
+        if (spaceIsPressed && !spaceWasPressed) {
+            std::cout << "Space pressed - firing bullet" << std::endl;
+            // Add bullet at camera position, firing forward
+            glm::vec3 bulletPosition = glm::vec3(0.0f, 0.0f, 0.0f); // Adjust as needed
+            glm::vec3 bulletDirection = glm::vec3(0.0f, 0.0f, -1.0f); // Forward
+            addBullet(bulletPosition, bulletDirection);
         }
+        spaceWasPressed = spaceIsPressed;
     }
     void initWindow() {
         glfwInit();
@@ -385,6 +474,7 @@ private:
         createDescriptorSets();
         createCommandBuffers();
         createSyncObjects();
+        createBulletSSBO();
     }
 
     void mainLoop() {
@@ -395,7 +485,7 @@ private:
             lastFrame = currentFrame;
             glfwPollEvents();
             processInput(window);
-            weapon.update(deltaTime); // Update bullet positions
+            updateBullets();
             drawFrame();
 
         }
@@ -744,21 +834,33 @@ private:
     }
 
     void createDescriptorSetLayout() {
+        // UBO binding (binding = 0)
         VkDescriptorSetLayoutBinding uboLayoutBinding{};
         uboLayoutBinding.binding = 0;
-        uboLayoutBinding.descriptorCount = 1;
         uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        uboLayoutBinding.pImmutableSamplers = nullptr;
+        uboLayoutBinding.descriptorCount = 1;
         uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
+        // Sampler binding (binding = 1)
         VkDescriptorSetLayoutBinding samplerLayoutBinding{};
         samplerLayoutBinding.binding = 1;
-        samplerLayoutBinding.descriptorCount = 1;
         samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        samplerLayoutBinding.pImmutableSamplers = nullptr;
-        samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        samplerLayoutBinding.descriptorCount = 1;
+        samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;  // Changed to fragment shader
 
-        std::array<VkDescriptorSetLayoutBinding, 2> bindings = { uboLayoutBinding, samplerLayoutBinding };
+        // SSBO binding (binding = 2)
+        VkDescriptorSetLayoutBinding ssboLayoutBinding{};
+        ssboLayoutBinding.binding = 2;  // Changed to binding 2
+        ssboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        ssboLayoutBinding.descriptorCount = 1;
+        ssboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+        std::array<VkDescriptorSetLayoutBinding, 3> bindings = {
+            uboLayoutBinding, 
+            samplerLayoutBinding,
+            ssboLayoutBinding
+        };
+        
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
@@ -830,7 +932,7 @@ private:
         depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
         depthStencil.depthTestEnable = VK_TRUE;
         depthStencil.depthWriteEnable = VK_TRUE;
-        depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+        depthStencil.depthCompareOp = VK_COMPARE_OP_ALWAYS;
         depthStencil.depthBoundsTestEnable = VK_FALSE;
         depthStencil.stencilTestEnable = VK_FALSE;
 
@@ -864,13 +966,19 @@ private:
         dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
         dynamicState.pDynamicStates = dynamicStates.data();
 
+         // Define push constant range
+        VkPushConstantRange pushConstantRange{};
+        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        pushConstantRange.offset = 0;
+        pushConstantRange.size = sizeof(PushConstants);
 
-
+        // Create pipeline layout with both descriptor set layout and push constants
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipelineLayoutInfo.setLayoutCount = 1;
         pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
-       
+        pipelineLayoutInfo.pushConstantRangeCount = 1;
+        pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
         if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create pipeline layout!");
@@ -1321,7 +1429,12 @@ private:
             imageInfo.imageView = textureImageView;
             imageInfo.sampler = textureSampler;
 
-            std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+            VkDescriptorBufferInfo ssboInfo{};
+            ssboInfo.buffer = bulletSSBO.buffer;
+            ssboInfo.offset = 0;
+            ssboInfo.range = sizeof(Bullet) * bulletSSBO.bullets.size();
+
+            std::array<VkWriteDescriptorSet, 3> descriptorWrites{};
 
             descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             descriptorWrites[0].dstSet = descriptorSets[i];
@@ -1338,6 +1451,14 @@ private:
             descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             descriptorWrites[1].descriptorCount = 1;
             descriptorWrites[1].pImageInfo = &imageInfo;
+
+            descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrites[2].dstSet = descriptorSets[i];
+            descriptorWrites[2].dstBinding = 2;
+            descriptorWrites[2].dstArrayElement = 0;
+            descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            descriptorWrites[2].descriptorCount = 1;
+            descriptorWrites[2].pBufferInfo = &ssboInfo;
 
             vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
         }
@@ -1481,10 +1602,10 @@ private:
         VkBuffer vertexBuffers[] = { vertexBuffer };
         VkDeviceSize offsets[] = { 0 };
 
-        // Update uniform buffer for weapon
-        glm::mat4 weaponModelMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
-        updateUniformBufferForWeapon(currentFrame, weaponModelMatrix);
-
+        
+        PushConstants pushConstants{};
+        pushConstants.bulletIndex = -1;
+        vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pushConstants);
        
         vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
@@ -1507,24 +1628,22 @@ private:
         // Record ImGui draw data
 		ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
 
-
+        // Bind the SSBO
+        VkBuffer buffers[] = {bulletSSBO.buffer};
         
-        // Bind and draw bullets
        
-
-        for (const Bullet& bullet : weapon.getBullets()) {
-            glm::mat4 bulletModelMatrix = glm::translate(glm::mat4(1.0f), bullet.startPosition);
+        for (size_t i = 0; i < bulletSSBO.bullets.size(); i++) {
            
+            pushConstants.bulletIndex = static_cast<int>(i);
+            std::cout << "Bullet count: " << bulletSSBO.bullets.size() << std::endl;
+            std::cout << "Bullet position: " << bulletSSBO.bullets[i].matrix[3].z << std::endl;
+            std::cout << "Push constant index: " << pushConstants.bulletIndex << std::endl;
 
-            updateUniformBufferForBullet(currentFrame, bulletModelMatrix);
+            vkCmdPushConstants(commandBuffer, pipelineLayout, 
+            VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pushConstants);
 
-
-            VkBuffer bulletVertexBuffers[] = { bulletVertexBuffer };
-            VkDeviceSize bulletOffsets[] = { 0 };
-            vkCmdBindVertexBuffers(commandBuffer, 0, 1, bulletVertexBuffers, bulletOffsets);
-           
+            vkCmdBindVertexBuffers(commandBuffer, 0, 1, &bulletVertexBuffer, offsets);
             vkCmdBindIndexBuffer(commandBuffer, bulletIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
-
             vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(bulletIndices.size()), 1, 0, 0, 0);
         }
         vkCmdEndRenderPass(commandBuffer);
@@ -1565,7 +1684,7 @@ private:
         ubo.model = glm::mat4(1.0f);  
         ubo.view = glm::lookAt(glm::vec3(5.0f, 5.0f, 20.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
-        
+        ubo.proj[1][1] *= -1;
         memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
     }
     /*void updateUniformBuffer(uint32_t currentImage, const glm::mat4& model) {
@@ -1586,10 +1705,7 @@ private:
         ubo.model = weaponModelMatrix;
         ubo.view = glm::lookAt(glm::vec3(10.0f, 5.0f, 15.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
-        ubo.bulletModel = glm::mat4(1.0f); // Identity matrix for bullets
-        ubo.proj[1][1] *= -1; // Vulkan clip space adjustment
-        ubo.isBullet = 0; // Weapon flag
-
+        ubo.proj[1][1] *= -1;
         memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
     }
 
@@ -1598,9 +1714,7 @@ private:
         ubo.model = glm::mat4(1.0f); // Identity matrix for weapon
         ubo.view = glm::lookAt(glm::vec3(10.0f, 5.0f, 15.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
-        ubo.bulletModel = bulletModelMatrix;
-        ubo.proj[1][1] *= -1; // Vulkan clip space adjustment
-        ubo.isBullet = 1; // Bullet flag
+        
 
         memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
     }
@@ -1608,10 +1722,11 @@ private:
         // Verify weapon and bullet states
         // std::cout << "Number of bullets: " << weapon.getBullets().size() << std::endl;
 
-        for (const auto& bullet : weapon.getBullets()) {
-            std::cout << "Bullet Position: " << bullet.startPosition.x << ", " << bullet.startPosition.y << ", " << bullet.startPosition.z <<std::endl;
-        }
+        // for (const auto& bullet : weapon.getBullets()) {
+        //     std::cout << "Bullet Position: " << bullet.position.x << ", " << bullet.position.y << ", " << bullet.position.z <<std::endl;
+        // }
         vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+        
 
         uint32_t imageIndex;
         VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
@@ -1625,13 +1740,16 @@ private:
             throw std::runtime_error("failed to acquire swap chain image!");
         }
 
-      /*  updateUniformBuffer(currentFrame);*/
-
+        updateUniformBuffer(currentFrame);
+        // glm::mat4 weaponModelMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
+        // updateUniformBufferForWeapon(currentFrame, weaponModelMatrix);
+        // glm::mat4 bulletModelMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
+        // updateUniformBufferForBullet(currentFrame, bulletModelMatrix);
         vkResetFences(device, 1, &inFlightFences[currentFrame]);
 
         vkResetCommandBuffer(commandBuffers[currentFrame], /*VkCommandBufferResetFlagBits*/ 0);
         recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
-        
+       
 		
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1894,7 +2012,7 @@ private:
 
     static std::vector<char> readFile(const std::string& filename) {
         std::ifstream file(filename, std::ios::ate | std::ios::binary);
-
+        std::cout << filename << std::endl;
         if (!file.is_open()) {
             throw std::runtime_error("failed to open file!");
         }
@@ -1915,6 +2033,8 @@ private:
 
         return VK_FALSE;
     }
+
+   
 };
 
 int main() {

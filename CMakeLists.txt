@@ -104,7 +104,7 @@ foreach(SHADER ${SHADER_SOURCES})
     get_filename_component(BASENAME ${FILENAME} NAME_WE)
     get_filename_component(EXTENSION ${FILENAME} EXT)
     string(SUBSTRING ${EXTENSION} 1 -1 EXTENSION)
-    set(SPV_FILE ${SHADER_BINARY_DIR}/${BASENAME}.${EXTENSION}.spv)
+    set(SPV_FILE ${EXTENSION}.spv)
     list(APPEND SHADER_SPV_FILES ${SPV_FILE})
     
     add_custom_command(
