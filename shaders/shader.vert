@@ -23,8 +23,7 @@ struct Bullet {
 layout(std140, binding = 2) buffer BulletSSBO {
     Bullet bullets[];
 };
->>>>>>> 54efe9059bdc24476c13956b061dd3479e879cee
-
+fix
 layout(push_constant) uniform PushConsts {
     int bulletIndex;  // -1 for weapon, >= 0 for bullets
 } pushConsts;
@@ -51,8 +50,6 @@ void main() {
     } else {
         gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 1.0);
     }
-    
->>>>>>> 54efe9059bdc24476c13956b061dd3479e879cee
     fragColor = inColor;
     fragTexCoord = inTexCoord;
 }
