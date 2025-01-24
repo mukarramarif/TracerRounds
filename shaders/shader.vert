@@ -4,7 +4,7 @@ layout(binding = 0) uniform UniformBufferObject {
     mat4 model;         
     mat4 view;          
     mat4 proj;          
-
+    
 }ubo;
 layout(binding = 1) buffer BulletBuffer {
        Bullet bullets[];
@@ -19,7 +19,7 @@ layout(location = 1) out vec2 fragTexCoord;
 void main() {
     // Choose transformation matrix based on the isBullet flag
     int instanceIndex = gl_InstanceIndex;
-
+   
 
     // Apply transformations
     mat4 modelMatrix = (instanceIndex < ubo.numBullets) ? ubo.bulletModels[instanceIndex] : ubo.model;
