@@ -168,8 +168,8 @@ struct UniformBufferObject {
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
-    alignas(16) glm::mat4 bulletModel;
-	alignas(16) int isBullet;
+    alignas(16) glm::mat4 bulletModels[1000];
+	int numBullets;
 };
 
 class HelloTriangleApplication {
@@ -1381,7 +1381,7 @@ private:
 
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
 
         vkBeginCommandBuffer(commandBuffer, &beginInfo);
 
@@ -1481,9 +1481,8 @@ private:
         VkBuffer vertexBuffers[] = { vertexBuffer };
         VkDeviceSize offsets[] = { 0 };
 
-        // Update uniform buffer for weapon
-        glm::mat4 weaponModelMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
-        updateUniformBufferForWeapon(currentFrame, weaponModelMatrix);
+        
+        
 
        
         vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
@@ -1513,10 +1512,7 @@ private:
        
 
         for (const Bullet& bullet : weapon.getBullets()) {
-            glm::mat4 bulletModelMatrix = glm::translate(glm::mat4(1.0f), bullet.startPosition);
-           
-
-            updateUniformBufferForBullet(currentFrame, bulletModelMatrix);
+            
 
 
             VkBuffer bulletVertexBuffers[] = { bulletVertexBuffer };
@@ -1562,12 +1558,24 @@ private:
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
         UniformBufferObject ubo{};
-        ubo.model = glm::mat4(1.0f);  
+        ubo.model = glm::mat4(1.0f);
         ubo.view = glm::lookAt(glm::vec3(5.0f, 5.0f, 20.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
-        
-        memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+        ubo.proj[1][1] *= -1;
+        // Update bullet model matrices
+            const auto& bullets = weapon.getBullets();
+        ubo.numBullets = static_cast<int>(bullets.size());
+        for (size_t i = 0; i < bullets.size(); ++i) {
+            ubo.bulletModels[i] = glm::translate(glm::mat4(1.0f), bullets[i].startPosition);
+        }
+
+        void* data;
+        vkMapMemory(device, uniformBuffersMemory[currentImage], 0, sizeof(ubo), 0, &data);
+        memcpy(data, &ubo, sizeof(ubo));
+        vkUnmapMemory(device, uniformBuffersMemory[currentImage]);
+
     }
+    
     /*void updateUniformBuffer(uint32_t currentImage, const glm::mat4& model) {
        
         UniformBufferObject ubo{};
@@ -1581,29 +1589,29 @@ private:
         memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
 
     }*/
-    void updateUniformBufferForWeapon(uint32_t currentImage, const glm::mat4& weaponModelMatrix) {
-        UniformBufferObject ubo{};
-        ubo.model = weaponModelMatrix;
-        ubo.view = glm::lookAt(glm::vec3(10.0f, 5.0f, 15.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
-        ubo.bulletModel = glm::mat4(1.0f); // Identity matrix for bullets
-        ubo.proj[1][1] *= -1; // Vulkan clip space adjustment
-        ubo.isBullet = 0; // Weapon flag
+    //void updateUniformBufferForWeapon(uint32_t currentImage, const glm::mat4& weaponModelMatrix) {
+    //    UniformBufferObject ubo{};
+    //    ubo.model = weaponModelMatrix;
+    //    ubo.view = glm::lookAt(glm::vec3(10.0f, 5.0f, 15.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    //    ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
+    //    ubo.bulletModel = glm::mat4(1.0f); // Identity matrix for bullets
+    //    ubo.proj[1][1] *= -1; // Vulkan clip space adjustment
+    //    ubo.isBullet = 0; // Weapon flag
 
-        memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
-    }
+    //    memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+    //}
 
-    void updateUniformBufferForBullet(uint32_t currentImage, const glm::mat4& bulletModelMatrix) {
-        UniformBufferObject ubo{};
-        ubo.model = glm::mat4(1.0f); // Identity matrix for weapon
-        ubo.view = glm::lookAt(glm::vec3(10.0f, 5.0f, 15.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
-        ubo.bulletModel = bulletModelMatrix;
-        ubo.proj[1][1] *= -1; // Vulkan clip space adjustment
-        ubo.isBullet = 1; // Bullet flag
+    //void updateUniformBufferForBullet(uint32_t currentImage, const glm::mat4& bulletModelMatrix) {
+    //    UniformBufferObject ubo{};
+    //    ubo.model = glm::mat4(1.0f); // Identity matrix for weapon
+    //    ubo.view = glm::lookAt(glm::vec3(10.0f, 5.0f, 15.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    //    ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
+    //    ubo.bulletModel = bulletModelMatrix;
+    //    ubo.proj[1][1] *= -1; // Vulkan clip space adjustment
+    //    ubo.isBullet = 1; // Bullet flag
 
-        memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
-    }
+    //    memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+    //}
     void drawFrame() {
         // Verify weapon and bullet states
         // std::cout << "Number of bullets: " << weapon.getBullets().size() << std::endl;
@@ -1611,8 +1619,7 @@ private:
         for (const auto& bullet : weapon.getBullets()) {
             std::cout << "Bullet Position: " << bullet.startPosition.x << ", " << bullet.startPosition.y << ", " << bullet.startPosition.z <<std::endl;
         }
-        vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
-
+       
         uint32_t imageIndex;
         VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
@@ -1625,11 +1632,12 @@ private:
             throw std::runtime_error("failed to acquire swap chain image!");
         }
 
-      /*  updateUniformBuffer(currentFrame);*/
-
+        
+       
         vkResetFences(device, 1, &inFlightFences[currentFrame]);
 
         vkResetCommandBuffer(commandBuffers[currentFrame], /*VkCommandBufferResetFlagBits*/ 0);
+        updateUniformBuffer(currentFrame);
         recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
         
 		
@@ -1894,9 +1902,10 @@ private:
 
     static std::vector<char> readFile(const std::string& filename) {
         std::ifstream file(filename, std::ios::ate | std::ios::binary);
-
+        std::cout<< filename << std::endl;
         if (!file.is_open()) {
             throw std::runtime_error("failed to open file!");
+            
         }
 
         size_t fileSize = (size_t)file.tellg();
