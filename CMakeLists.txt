@@ -21,22 +21,10 @@ add_subdirectory(${GLM_PATH})
 add_subdirectory(${TINYOBJ_PATH})
 
 # Configure imgui
-set(IMGUI_SOURCES
-    ${IMGUI_PATH}/imgui.cpp
-    ${IMGUI_PATH}/imgui_demo.cpp
-    ${IMGUI_PATH}/imgui_draw.cpp
-    ${IMGUI_PATH}/imgui_tables.cpp
-    ${IMGUI_PATH}/imgui_widgets.cpp
-    ${IMGUI_PATH}/backends/imgui_impl_glfw.cpp
-    ${IMGUI_PATH}/backends/imgui_impl_vulkan.cpp
-)
-
-add_library(imgui STATIC ${IMGUI_SOURCES})
+add_subdirectory(${IMGUI_PATH})
 target_include_directories(imgui
     PUBLIC ${GLFW_PATH}/include
     PUBLIC ${Vulkan_INCLUDE_DIRS}
-    PUBLIC ${IMGUI_PATH}
-    PUBLIC ${IMGUI_PATH}/backends
 )
 
 # Add source files
@@ -116,7 +104,7 @@ foreach(SHADER ${SHADER_SOURCES})
     get_filename_component(BASENAME ${FILENAME} NAME_WE)
     get_filename_component(EXTENSION ${FILENAME} EXT)
     string(SUBSTRING ${EXTENSION} 1 -1 EXTENSION)
-    set(SPV_FILE ${SHADER_BINARY_DIR}/${EXTENSION}.spv)
+    set(SPV_FILE ${EXTENSION}.spv)
     list(APPEND SHADER_SPV_FILES ${SPV_FILE})
     
     add_custom_command(
