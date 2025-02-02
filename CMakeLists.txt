@@ -10,10 +10,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Configure Vulkan
 find_package(Vulkan REQUIRED)
-
+include_directories(${Vulkan_INCLUDE_DIRS})
 # Configure GLFW
 add_subdirectory(${GLFW_PATH})
-
+include_directories(${GLFW_INCLUDE_DIRS})
 # Configure GLM
 add_subdirectory(${GLM_PATH})
 
@@ -21,11 +21,34 @@ add_subdirectory(${GLM_PATH})
 add_subdirectory(${TINYOBJ_PATH})
 
 # Configure imgui
-add_subdirectory(${IMGUI_PATH})
-target_include_directories(imgui
-    PUBLIC ${GLFW_PATH}/include
-    PUBLIC ${Vulkan_INCLUDE_DIRS}
+# add_subdirectory(${IMGUI_PATH})
+
+
+# Define the path to the ImGui directory
+set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/external/imgui)
+
+# Add ImGui source files
+set(IMGUI_SOURCES
+    ${IMGUI_DIR}/imgui.cpp
+    ${IMGUI_DIR}/imgui_draw.cpp
+    ${IMGUI_DIR}/imgui_widgets.cpp
+    ${IMGUI_DIR}/imgui_demo.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp
+    ${IMGUI_DIR}/imgui_tables.cpp  
+
 )
+
+# Create a library for ImGui
+add_library(imgui STATIC ${IMGUI_SOURCES})
+
+# Include directories for ImGui
+target_include_directories(imgui PUBLIC
+    ${IMGUI_DIR}
+    ${IMGUI_DIR}/backends
+)
+
+
 
 # Add source files
 add_executable(${PROJECT_NAME} 
@@ -46,6 +69,9 @@ target_include_directories(${PROJECT_NAME}
     PRIVATE ${Vulkan_INCLUDE_DIRS}
     PRIVATE ${STB_PATH}
     PRIVATE ${IMGUI_PATH}
+    PRIVATE ${IMGUI_DIR}
+    PRIVATE ${IMGUI_DIR}/backends/imgui_impl_glfw.h
+    PRIVATE ${IMGUI_DIR}/backends/imgui_impl_vulkan.h
 )
 
 # Copy shader files if you have any

@@ -130,7 +130,7 @@ struct Bullet {
     alignas(16) glm::mat4 matrix;
 };
 
-struct {
+struct BulletSSBO {
     VkBuffer buffer;
     VkDeviceMemory memory;
     void* mappedData;
@@ -143,10 +143,7 @@ struct {
 //         bullets.push_back({ startPosition, direction, speed, 5.0f }); // 5 seconds lifetime
 //     }
 
-// Per-model data in SSBO
-struct ModelData {
-    alignas(16) glm::mat4 model;
-};
+
 
 
 
@@ -161,6 +158,7 @@ struct UniformBufferObject {
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
+    int numBullets;
 };
 struct PushConstants {
     int bulletIndex;
@@ -256,7 +254,13 @@ private:
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
             bulletSSBO.buffer, bulletSSBO.memory);
 
-        vkMapMemory(device, bulletSSBO.memory, 0, bufferSize, 0, &bulletSSBO.mappedData);
+         // Check if the buffer was created successfully
+       if (bulletSSBO.buffer == VK_NULL_HANDLE) {
+           std::cerr << "Error: Bullet SSBO buffer creation failed!" << std::endl;
+           return; // Early exit or handle the error appropriately
+       }
+
+       vkMapMemory(device, bulletSSBO.memory, 0, bufferSize, 0, &bulletSSBO.mappedData);
     }
 
     // Update bullet data
@@ -301,14 +305,22 @@ private:
     // Add bullet
     void addBullet(glm::vec3 position, glm::vec3 direction) {
         Bullet bullet{};
-        bullet.matrix = glm::translate(glm::mat4(1.0f), position);
+        glm::mat4 translation = glm::translate(glm::mat4(1.0f), position);
+    
+        // First rotate 90 degrees around X axis to lay the bullet flat
+        glm::mat4 modelCorrection = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+    
+        // Then apply any additional rotation for direction
+        glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+
+        bullet.matrix = translation * rotation* modelCorrection; 
         bulletSSBO.bullets.push_back(bullet);
         std::cout << "Added bullet. Total bullets: " << bulletSSBO.bullets.size() << std::endl;
     }
 	
     void loadBulletModel() {
-        // Comment out original bullet model loading
-        /*
+       
+        
         tinyobj::attrib_t attrib;
         std::vector<tinyobj::shape_t> shapes;
         std::vector<tinyobj::material_t> materials;
@@ -344,36 +356,36 @@ private:
                 bulletIndices.push_back(uniqueVertices[vertex]);
             }
         }
-        */
-        // Create a simple cube for bullets
-        bulletVertices = {
-            // Front face
-            {{-0.1f, -0.1f, -0.1f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},  // Red color
-            {{0.1f, -0.1f, -0.1f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-            {{0.1f, 0.1f, -0.1f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
-            {{-0.1f, 0.1f, -0.1f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+        
+        // // Create a simple cube for bullets
+        // bulletVertices = {
+        //     // Front face
+        //     {{-0.1f, -0.1f, -0.1f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},  // Red color
+        //     {{0.1f, -0.1f, -0.1f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+        //     {{0.1f, 0.1f, -0.1f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
+        //     {{-0.1f, 0.1f, -0.1f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
 
-            // Back face
-            {{-0.1f, -0.1f, 0.1f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-            {{0.1f, -0.1f, 0.1f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-            {{0.1f, 0.1f, 0.1f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
-            {{-0.1f, 0.1f, 0.1f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}}
-        };
+        //     // Back face
+        //     {{-0.1f, -0.1f, 0.1f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+        //     {{0.1f, -0.1f, 0.1f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+        //     {{0.1f, 0.1f, 0.1f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
+        //     {{-0.1f, 0.1f, 0.1f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}}
+        // };
 
-        bulletIndices = {
-            // Front face
-            0, 1, 2, 2, 3, 0,
-            // Back face
-            4, 5, 6, 6, 7, 4,
-            // Left face
-            4, 0, 3, 3, 7, 4,
-            // Right face
-            1, 5, 6, 6, 2, 1,
-            // Top face
-            3, 2, 6, 6, 7, 3,
-            // Bottom face
-            0, 1, 5, 5, 4, 0
-        };
+        // bulletIndices = {
+        //     // Front face
+        //     0, 1, 2, 2, 3, 0,
+        //     // Back face
+        //     4, 5, 6, 6, 7, 4,
+        //     // Left face
+        //     4, 0, 3, 3, 7, 4,
+        //     // Right face
+        //     1, 5, 6, 6, 2, 1,
+        //     // Top face
+        //     3, 2, 6, 6, 7, 3,
+        //     // Bottom face
+        //     0, 1, 5, 5, 4, 0
+        // };
 
         
     }
@@ -389,7 +401,7 @@ private:
         if (spaceIsPressed && !spaceWasPressed) {
             std::cout << "Space pressed - firing bullet" << std::endl;
             // Add bullet at camera position, firing forward
-            glm::vec3 bulletPosition = glm::vec3(0.0f, 0.0f, 0.0f); // Adjust as needed
+            glm::vec3 bulletPosition = glm::vec3(-7.0f, -1.0f, -55.0f); // Adjust as needed
             glm::vec3 bulletDirection = glm::vec3(0.0f, 0.0f, -1.0f); // Forward
             addBullet(bulletPosition, bulletDirection);
         }
@@ -470,11 +482,12 @@ private:
         loadBulletModel();
         createBulletBuffers();
         createUniformBuffers();
+        createBulletSSBO();
         createDescriptorPool();
         createDescriptorSets();
         createCommandBuffers();
         createSyncObjects();
-        createBulletSSBO();
+       
     }
 
     void mainLoop() {
@@ -869,6 +882,18 @@ private:
         if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor set layout!");
         }
+
+        if (enableValidationLayers) {
+            // Logging the descriptor set layout details
+            std::cout << "Descriptor Set Layout created successfully!" << std::endl;
+            for (const auto& binding : bindings) {
+                std::cout << "Binding: " << binding.binding 
+                  << ", Type: " << binding.descriptorType 
+                  << ", Count: " << binding.descriptorCount 
+                  << ", Stage Flags: " << binding.stageFlags << std::endl;
+                }
+            std::cout << "Descriptor Set Layout: " << descriptorSetLayout << std::endl;
+        }
     }
 
     void createGraphicsPipeline() {
@@ -983,7 +1008,12 @@ private:
         if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create pipeline layout!");
         }
-
+        if (enableValidationLayers) {
+            // Logging the pipeline layout details
+            std::cout << "Pipeline Layout created successfully!" << std::endl;
+            std::cout << "Descriptor Set Layout Count: " << pipelineLayoutInfo.setLayoutCount << std::endl;
+            std::cout << "Push Constant Range Size: " << pushConstantRange.size << std::endl;
+        }
         VkGraphicsPipelineCreateInfo pipelineInfo{};
         pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
         pipelineInfo.stageCount = 2;
@@ -1388,17 +1418,18 @@ private:
     }
 
     void createDescriptorPool() {
-        std::array<VkDescriptorPoolSize, 2> poolSizes{};
+        std::array<VkDescriptorPoolSize, 3> poolSizes{};
         poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+        poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 4;
         poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT)* 2;
-
+        poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT)* 4;
+        poolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        poolSizes[2].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT)* 4;
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
         poolInfo.pPoolSizes = poolSizes.data();
-        poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 2;
+        poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 4;
 		poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
         if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor pool!");
@@ -1432,7 +1463,7 @@ private:
             VkDescriptorBufferInfo ssboInfo{};
             ssboInfo.buffer = bulletSSBO.buffer;
             ssboInfo.offset = 0;
-            ssboInfo.range = sizeof(Bullet) * bulletSSBO.bullets.size();
+            ssboInfo.range = VK_WHOLE_SIZE;
 
             std::array<VkWriteDescriptorSet, 3> descriptorWrites{};
 
@@ -1575,7 +1606,7 @@ private:
         renderPassInfo.renderArea.offset = { 0, 0 };
         renderPassInfo.renderArea.extent = swapChainExtent;
         std::array<VkClearValue, 2> clearValues{};
-        clearValues[0].color = { {0.0f, 0.0f, 0.0f, 0.0f} };
+        clearValues[0].color = { {0.5f, 0.5f, 0.5f, 0.5f} };
         clearValues[1].depthStencil = { 1.0f, 0 };
 
         renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
@@ -1584,7 +1615,7 @@ private:
         vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
-
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
         VkViewport viewport{};
         viewport.x = 0.0f;
         viewport.y = 0.0f;
@@ -1611,10 +1642,34 @@ private:
 
         vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
+        
 
         vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
+        // pushConstants.bulletIndex = bulletSSBO.bullets.size();
+        // if( bulletSSBO.bullets.size() > 0){
+        //     std::cout << bulletSSBO.bullets.size() << std::endl;
+        //     vkCmdPushConstants(commandBuffer, pipelineLayout, 
+        //     VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pushConstants);
+            
+            
+        //     vkCmdBindVertexBuffers(commandBuffer, 0, 1, &bulletVertexBuffer, offsets);
+        //     vkCmdBindIndexBuffer(commandBuffer, bulletIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+     
+            
+           
+        // }
+        
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, &bulletVertexBuffer, offsets);
+        vkCmdBindIndexBuffer(commandBuffer, bulletIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+        for(int i = 0; i < bulletSSBO.bullets.size(); i++){
+            pushConstants.bulletIndex = i;
+
+            vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pushConstants);
+            vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(bulletIndices.size()),1,0,i,1);
+        }        
+
+        
         ImGui_ImplVulkan_NewFrame();
 
         ImGui_ImplGlfw_NewFrame();
@@ -1627,25 +1682,6 @@ private:
 
         // Record ImGui draw data
 		ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
-
-        // Bind the SSBO
-        VkBuffer buffers[] = {bulletSSBO.buffer};
-        
-       
-        for (size_t i = 0; i < bulletSSBO.bullets.size(); i++) {
-           
-            pushConstants.bulletIndex = static_cast<int>(i);
-            std::cout << "Bullet count: " << bulletSSBO.bullets.size() << std::endl;
-            std::cout << "Bullet position: " << bulletSSBO.bullets[i].matrix[3].z << std::endl;
-            std::cout << "Push constant index: " << pushConstants.bulletIndex << std::endl;
-
-            vkCmdPushConstants(commandBuffer, pipelineLayout, 
-            VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pushConstants);
-
-            vkCmdBindVertexBuffers(commandBuffer, 0, 1, &bulletVertexBuffer, offsets);
-            vkCmdBindIndexBuffer(commandBuffer, bulletIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
-            vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(bulletIndices.size()), 1, 0, 0, 0);
-        }
         vkCmdEndRenderPass(commandBuffer);
 
         if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
@@ -1677,15 +1713,27 @@ private:
     void updateUniformBuffer(uint32_t currentImage) {
         static auto startTime = std::chrono::high_resolution_clock::now();
 
-        auto currentTime = std::chrono::high_resolution_clock::now();
-        float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+       auto currentTime = std::chrono::high_resolution_clock::now();
+       float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-        UniformBufferObject ubo{};
-        ubo.model = glm::mat4(1.0f);
-        ubo.view = glm::lookAt(glm::vec3(5.0f, 5.0f, 20.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
-        ubo.proj[1][1] *= -1;
-        memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+       // Update bullet positions
+       for (size_t i = 0; i < bulletSSBO.bullets.size(); i++) {
+           // Example: Update bullet position based on some logic
+           bulletSSBO.bullets[i].matrix[3].z -= 100.0f; // Move bullet forward
+           // You can add more complex logic for movement here
+       }
+
+       // Copy updated bullet data back to the storage buffer
+       memcpy(bulletSSBO.mappedData, bulletSSBO.bullets.data(), sizeof(Bullet) * bulletSSBO.bullets.size());
+
+       // Update uniform buffer for other objects (e.g., camera, etc.)
+       UniformBufferObject ubo{};
+       ubo.model = glm::mat4(1.0f);
+       ubo.view = glm::lookAt(glm::vec3(5.0f, 5.0f, 20.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+       ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 1000000.0f);
+       ubo.proj[1][1] *= -1;
+       ubo.numBullets = bulletSSBO.bullets.size();
+       memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
     }
     
     /*void updateUniformBuffer(uint32_t currentImage, const glm::mat4& model) {
@@ -1741,7 +1789,7 @@ private:
             throw std::runtime_error("failed to acquire swap chain image!");
         }
 
-        updateUniformBuffer(currentFrame);
+    
         // glm::mat4 weaponModelMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
         // updateUniformBufferForWeapon(currentFrame, weaponModelMatrix);
         // glm::mat4 bulletModelMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));

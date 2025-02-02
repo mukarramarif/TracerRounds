@@ -1,55 +1,50 @@
 #version 450
 
 layout(binding = 0) uniform UniformBufferObject {
-<<<<<<< HEAD
     mat4 model;         
     mat4 view;          
     mat4 proj;          
-    
-}ubo;
-layout(binding = 1) buffer BulletBuffer {
-       Bullet bullets[];
-};
+    int numBullets;
+} ubo;
+
 layout(location = 0) in vec3 inPosition;   
 layout(location = 1) in vec3 inColor;      
 layout(location = 2) in vec2 inTexCoord;   
-   
-
 
 struct Bullet {
     mat4 matrix;
 };
 
-layout(std140, binding = 2) buffer BulletSSBO {
+layout(std430, binding = 2) buffer BulletSSBO {
     Bullet bullets[];
 };
-fix
+
 layout(push_constant) uniform PushConsts {
     int bulletIndex;  // -1 for weapon, >= 0 for bullets
 } pushConsts;
-
-layout(location = 0) in vec3 inPosition;
-layout(location = 1) in vec3 inColor;
-layout(location = 2) in vec2 inTexCoord;
 
 layout(location = 0) out vec3 fragColor;
 layout(location = 1) out vec2 fragTexCoord;
 
 void main() {
-<<<<<<< HEAD
-    // Choose transformation matrix based on the isBullet flag
+    // Get the instance index
     int instanceIndex = gl_InstanceIndex;
-   
-
-    // Apply transformations
-    mat4 modelMatrix = (instanceIndex < ubo.numBullets) ? ubo.bulletModels[instanceIndex] : ubo.model;
-    gl_Position = ubo.proj * ubo.view * modelMatrix * vec4(inPosition, 1.0);
-
-    if (pushConsts.bulletIndex >= 0) {
-        gl_Position = ubo.proj * ubo.view * bullets[pushConsts.bulletIndex].matrix * vec4(inPosition, 1.0);
-    } else {
-        gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 1.0);
+    
+    // Default to model matrix
+    mat4 modelMatrix = ubo.model;
+    
+    // Only use bullet matrix if this is a valid bullet instance
+    if (instanceIndex < ubo.numBullets && instanceIndex >= 0) {
+        modelMatrix = bullets[pushConsts.bulletIndex].matrix;
+        
     }
+    
+    // Calculate final position
+    vec4 worldPos = modelMatrix * vec4(inPosition, 1.0);
+    vec4 viewPos = ubo.view * worldPos;
+    gl_Position = ubo.proj * viewPos;
+    
+    // Pass through other attributes
     fragColor = inColor;
     fragTexCoord = inTexCoord;
 }
