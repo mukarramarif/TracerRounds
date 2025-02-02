@@ -109,20 +109,6 @@ TracerRounds_Project/
 ├── setup.bat         # Windows setup script
 └── setup.sh          # Linux setup script
 ```
-
-## Shader Compilation
-
-Compile shaders using:
-```bash
-# Windows
-%VULKAN_SDK%/Bin/glslc.exe shaders/shader.vert -o shaders/vert.spv
-%VULKAN_SDK%/Bin/glslc.exe shaders/shader.frag -o shaders/frag.spv
-
-# Linux
-glslc shaders/shader.vert -o shaders/vert.spv
-glslc shaders/shader.frag -o shaders/frag.spv
-```
-
 ## Troubleshooting
 
 - If CMake can't find Vulkan SDK:
@@ -139,6 +125,13 @@ glslc shaders/shader.frag -o shaders/frag.spv
   - Check if shaders are compiled and in correct location
   - Verify Vulkan validation layers are enabled in debug builds
   - Look for validation layer messages in console output
-```
+
 
 This README provides comprehensive setup instructions for both Windows and Linux, along with project structure, shader compilation instructions, and troubleshooting tips. Users should be able to get the project running by following these steps.
+
+
+## Current Work In Progress
+  * Got Bullet system working!
+  * Need to work on shader for tracer effect
+  * https://github.com/user-attachments/assets/4c95a991-c87d-4139-8f61-b61963a10159
+
