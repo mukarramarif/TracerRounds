@@ -1,5 +1,5 @@
 # TracerRounds_Project
-```markdown:README.md
+
 # TracerRounds Project
 
 A Vulkan-based graphics application with GLFW, GLM, ImGui and other dependencies.
@@ -133,5 +133,5 @@ This README provides comprehensive setup instructions for both Windows and Linux
 ## Current Work In Progress
   * Got Bullet system working!
   * Need to work on shader for tracer effect
-  * https://github.com/user-attachments/assets/4c95a991-c87d-4139-8f61-b61963a10159
+  * <video src="https://github.com/user-attachments/assets/4c95a991-c87d-4139-8f61-b61963a10159" controls="controls" style="max-width: 730px;"></video>
 
